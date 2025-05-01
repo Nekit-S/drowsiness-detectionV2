@@ -64,7 +64,7 @@ public class DispatcherController {
         Driver driver = driverRepository.findById(driverId).orElse(null);
         List<Event> events = eventRepository.findByDriverIdOrderByStartTimeDesc(driverId);
         // Сводная статистика
-        int totalEvents = events.size();
+        //int totalEvents = events.size(); // Количество событий можно добавить в шаблон
         float totalDuration = 0f;
         float drowsyTime = 0f;
         float distractedTime = 0f;
@@ -99,7 +99,7 @@ public class DispatcherController {
                 } catch (Exception ignore) {}
             }
         }
-        float totalRiskTime = drowsyTime + distractedTime;
+        //float totalRiskTime = drowsyTime + distractedTime; // Время в состоянии риска можно добавить в шаблон
         float drowsyPercent = totalDuration > 0 ? drowsyTime / totalDuration * 100f : 0f;
         float distractedPercent = totalDuration > 0 ? distractedTime / totalDuration * 100f : 0f;
         float normalPercent = totalDuration > 0 ? normalTime / totalDuration * 100f : 0f;

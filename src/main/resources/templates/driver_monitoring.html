@@ -302,6 +302,33 @@
         });
     }
 
+    // --- НОВАЯ ФУНКЦИЯ: Оценка позы головы (добавлен roll) ---
+    function calculateHeadPose(landmarks) {
+        // Индексы: Кончик носа: 1, Левый край лица: 234, Правый край лица: 454
+        // Левый глаз (центр): 473, Правый глаз (центр): 468
+        const nose = landmarks[1];
+        const leftEye = landmarks[473] || landmarks[33];
+        const rightEye = landmarks[468] || landmarks[263];
+        const leftFaceEdge = landmarks[234];
+        const rightFaceEdge = landmarks[454];
+        if (!nose || !leftEye || !rightEye || !leftFaceEdge || !rightFaceEdge) {
+            return { yaw: 0, roll: 0 };
+        }
+        // Yaw (рыскание)
+        const faceCenterZ = (leftEye.z + rightEye.z) / 2;
+        const lookVectorX = nose.x - (leftEye.x + rightEye.x) / 2;
+        const lookVectorZ = Math.abs(nose.z - faceCenterZ);
+        let yawRad = Math.atan2(lookVectorX, lookVectorZ + 0.01);
+        let yaw = yawRad * (180 / Math.PI);
+        // Roll (наклон головы)
+        // Вектор между левым и правым краем лица
+        const dx = rightFaceEdge.x - leftFaceEdge.x;
+        const dy = rightFaceEdge.y - leftFaceEdge.y;
+        let rollRad = Math.atan2(dy, dx);
+        let roll = rollRad * (180 / Math.PI);
+        return { yaw, roll };
+    }
+
     // Обработка результатов FaceMesh
     function onResults(results) {
         // Очищаем канвас
@@ -312,7 +339,8 @@
 
         let faceDetected = false;
         let isDistractedByPose = false;
-        let yawAngle = 0; // NEW
+        let yawAngle = 0;
+        let rollAngle = 0;
 
         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
             faceDetected = true;
@@ -323,12 +351,14 @@
             drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
             drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
 
-            // --- Оценка позы головы --- // NEW
-            yawAngle = calculateHeadPose(landmarks);
-            if (Math.abs(yawAngle) > YAW_THRESHOLD_DEGREES) {
+            // --- Оценка позы головы (yaw и roll) ---
+            const pose = calculateHeadPose(landmarks);
+            yawAngle = pose.yaw;
+            rollAngle = pose.roll;
+            // Считаем отвлечением только если yaw превышает порог и roll не слишком большой
+            if (Math.abs(yawAngle) > YAW_THRESHOLD_DEGREES && Math.abs(rollAngle) < 15) {
                 isDistractedByPose = true;
             }
-            // --- Конец оценки позы головы ---
 
             // Рассчитываем EAR для определения сонливости
             const leftEAR = calculateEAR(landmarks, LEFT_EYE_INDICES);
@@ -417,43 +447,6 @@
             }
         }
     }
-
-
-    // --- НОВАЯ ФУНКЦИЯ: Оценка позы головы (упрощенная) ---
-    function calculateHeadPose(landmarks) {
-        // Используем 3D координаты ключевых точек
-        // Индексы: Кончик носа: 1, Левый край лица: 234, Правый край лица: 454
-        //         Левый глаз (центр): 473, Правый глаз (центр): 468
-        const nose = landmarks[1];
-        const leftEye = landmarks[473] || landmarks[33]; // Fallback if iris not refined
-        const rightEye = landmarks[468] || landmarks[263]; // Fallback if iris not refined
-        const leftFaceEdge = landmarks[234];
-        const rightFaceEdge = landmarks[454];
-
-        if (!nose || !leftEye || !rightEye || !leftFaceEdge || !rightFaceEdge) {
-            console.warn("Недостаточно точек для оценки позы головы.");
-            return 0; // Невозможно рассчитать
-        }
-
-        // --- Метод 3: Использование 2D проекции 3D точек для оценки поворота ---
-        // Используем 3D точки для построения вектора взгляда
-        const faceCenterZ = (leftEye.z + rightEye.z) / 2;
-        const lookVectorX = nose.x - (leftEye.x + rightEye.x) / 2;
-        // Используем Z носа относительно Z глаз как меру глубины взгляда
-        // Чем больше разница Z, тем больше наклон (pitch), но мы используем X для yaw
-        const lookVectorZ = Math.abs(nose.z - faceCenterZ); // Используем абсолютное значение для знаменателя
-
-        // Угол рыскания (yaw) в радианах, используя atan2 для правильного квадранта
-        // atan2(y, x) -> atan2(горизонтальное_смещение_X, глубина_Z)
-        let yawRad = Math.atan2(lookVectorX, lookVectorZ + 0.01); // Добавляем малое значение к Z для избежания деления на ноль
-
-        // Преобразуем радианы в градусы
-        let yaw = yawRad * (180 / Math.PI);
-
-        // console.log(`Yaw Estimate: ${yaw.toFixed(1)} degrees`); // Для отладки
-        return yaw;
-    }
-    // --- Конец новой функции ---
 
 
     // Рассчитывает Eye Aspect Ratio для определения закрытости глаз
