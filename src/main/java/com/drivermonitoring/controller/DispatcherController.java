@@ -17,10 +17,16 @@ import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
-
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.stream.Collectors;
+import java.util.Map;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Controller
 public class DispatcherController {
@@ -121,5 +127,40 @@ public class DispatcherController {
         model.addAttribute("prediction", prediction);
         model.addAttribute("driverId", driverId);
         return "driver_prediction";
+    }
+}
+
+@RestController
+@RequestMapping("/api")
+class DispatcherApiController {
+    private final EventRepository eventRepository;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    @Autowired
+    public DispatcherApiController(EventRepository eventRepository) {
+        this.eventRepository = eventRepository;
+    }
+    @SuppressWarnings("unchecked")
+    @GetMapping(value = "/label-dataset", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<?> getLabelDataset() {
+        var labelEvents = eventRepository.findAll().stream()
+                .filter(e -> "LABEL".equalsIgnoreCase(e.getEventType()))
+                .map(e -> {
+                    try {
+                        Map<String, Object> meta = objectMapper.readValue(e.getMetadata(), Map.class);
+                        Map<String, Object> features = (Map<String, Object>) meta.get("features");
+                        return Map.of(
+                                "driverId", e.getDriverId(),
+                                "sessionId", e.getSessionId(),
+                                "label", meta.get("label"),
+                                "timestamp", meta.get("label_timestamp"),
+                                "features", features
+                        );
+                    } catch (Exception ex) {
+                        return null;
+                    }
+                })
+                .filter(e -> e != null)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(labelEvents);
     }
 }

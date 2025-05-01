@@ -715,37 +715,53 @@
     // === Рекомендации для водителя в реальном времени ===
     // Обновляем историю при смене рекомендации
     function updateDriverRecommendationBox(prediction) {
-        const box = document.getElementById('driverRecommendationBox');
         const text = document.getElementById('driverRecommendationText');
         if (!prediction) {
-            text.textContent = 'Нет данных для прогноза.';
-            text.className = 'fw-bold text-center text-secondary';
+            text.innerHTML = '<span class="text-secondary">Нет данных для прогноза.</span>';
             return;
         }
-        let color = 'text-success';
-        let msg = '';
+        let color = 'success', riskLabel = 'Низкий', icon = '🟢';
         switch (prediction.riskLevel) {
             case 'LOW':
-                color = 'text-success';
-                msg = 'Всё в порядке. Продолжайте движение и следите за дорогой.';
-                break;
+                color = 'success'; icon = '🟢'; riskLabel = 'Низкий'; break;
             case 'MEDIUM':
-                color = 'text-warning';
-                msg = 'Водитель часто отвлекается';
-                break;
+                color = 'warning'; icon = '🟡'; riskLabel = 'Средний'; break;
             case 'HIGH':
-                color = 'text-danger';
-                msg = 'Водитель засыпает';
-                break;
+                color = 'danger'; icon = '🔴'; riskLabel = 'Высокий'; break;
             default:
-                color = 'text-secondary';
-                msg = 'Нет данных для прогноза.';
+                color = 'secondary'; icon = '⚪'; riskLabel = 'Нет данных';
         }
-        text.textContent = msg;
-        text.className = 'fw-bold text-center ' + color;
+        // Причина риска (dangerTypeText)
+        let reason = prediction.dangerType || 'Нет угрозы';
+        text.innerHTML = `
+            <div class="d-flex flex-column align-items-center">
+                <span class="fw-bold text-${color}" style="font-size:1.2em;">
+                    <span style="font-size:1.2em;vertical-align:middle;">${icon}</span> Риск: ${riskLabel}
+                </span>
+                <span class="small text-dark">Причина: <b>${reason}</b></span>
+                <div class="w-100 my-2">
+                    <div class="mb-1 d-flex justify-content-between align-items-center">
+                        <span class="small">Сонливость</span>
+                        <span class="small fw-bold">${Math.round((prediction.probabilityDrowsy||0)*100)}%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-danger" role="progressbar" style="width: ${Math.round((prediction.probabilityDrowsy||0)*100)}%" aria-valuenow="${Math.round((prediction.probabilityDrowsy||0)*100)}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                    <div class="mb-1 mt-2 d-flex justify-content-between align-items-center">
+                        <span class="small">Отвлечение</span>
+                        <span class="small fw-bold">${Math.round((prediction.probabilityDistracted||0)*100)}%</span>
+                    </div>
+                    <div class="progress" style="height: 10px;">
+                        <div class="progress-bar bg-warning" role="progressbar" style="width: ${Math.round((prediction.probabilityDistracted||0)*100)}%" aria-valuenow="${Math.round((prediction.probabilityDistracted||0)*100)}" aria-valuemin="0" aria-valuemax="100"></div>
+                    </div>
+                </div>
+                <span class="small text-dark">Время до высокого риска: <b>${prediction.minutesUntilHigh} мин</b></span>
+                <span class="mt-1 text-dark">${prediction.recommendation || ''}</span>
+            </div>
+        `;
     }
 
-    // Периодически обновлять рекомендации (каждые 15 секунд)
+    // Периодически обновлять рекомендации (каждые 3 секунды)
     function startDriverRecommendationPolling() {
         const driverId = document.getElementById('driverId').value;
         function poll() {
@@ -753,7 +769,7 @@
                 .then(resp => resp.ok ? resp.json() : null)
                 .then(prediction => updateDriverRecommendationBox(prediction))
                 .catch(() => updateDriverRecommendationBox(null));
-            setTimeout(poll, 15000); // 15 секунд
+            setTimeout(poll, 3000); // 3 секунды
         }
         poll();
     }

@@ -9,6 +9,9 @@
 <div class="container mt-4">
         <h1>Dispatcher Panel</h1>
         <h2>Select Driver to View Statistics</h2>
+        <div class="mb-3">
+            <button id="downloadDatasetBtn" class="btn btn-success">Выгрузить датасет для обучения</button>
+        </div>
         <table class="table table-bordered table-hover">
             <thead class="thead-light">
                 <tr>
@@ -32,5 +35,26 @@
             </tbody>
         </table>
     </div>
+    <script>
+    // Кнопка для скачивания датасета
+    const downloadBtn = document.getElementById('downloadDatasetBtn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', function() {
+            fetch('/api/label-dataset')
+                .then(resp => resp.json())
+                .then(data => {
+                    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'label_dataset.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                });
+        });
+    }
+    </script>
 </body>
 </html>
