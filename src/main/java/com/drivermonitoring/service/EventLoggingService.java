@@ -46,4 +46,10 @@ public interface EventLoggingService {
      * @return List of recent events for the driver.
      */
     List<Event> getRecentEventsForDriver(String driverId, int limit);
+
+    /**
+     * Logs a labeled event for future AI training (manual annotation).
+     * @param labelEvent The labeled event DTO from the frontend.
+     */
+    void logLabeledEvent(com.drivermonitoring.dto.LabelEventDTO labelEvent);
 }

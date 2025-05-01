@@ -7,6 +7,7 @@
 package com.drivermonitoring.controller;
 
 import com.drivermonitoring.dto.ClientEventDTO;
+import com.drivermonitoring.dto.LabelEventDTO;
 import com.drivermonitoring.model.DriverState;
 import com.drivermonitoring.service.EventLoggingService;
 import com.drivermonitoring.service.SessionService;
@@ -86,6 +87,26 @@ public class MediaPipeEventController {
             logger.error("Error processing detection event for driver {}: {}",
                          (eventData != null ? eventData.getDriverId() : "unknown"), e.getMessage(), e);
             return ResponseEntity.internalServerError().body("An internal error occurred while processing the event.");
+        }
+    }
+
+    @PostMapping("/label-event")
+    public ResponseEntity<?> logLabelEvent(@RequestBody LabelEventDTO labelEvent) {
+        try {
+            logger.info("Received label event: {}", labelEvent);
+            // Валидация
+            if (labelEvent == null || labelEvent.getDriverId() == null || labelEvent.getLabel() == null) {
+                logger.warn("Received invalid label event: {}", labelEvent);
+                return ResponseEntity.badRequest().body("Missing required fields: driverId, label");
+            }
+            // Здесь можно добавить сохранение в отдельную таблицу или с флагом is_labeled
+            // Для MVP: просто логируем в файл/БД через сервис
+            eventLoggingService.logLabeledEvent(labelEvent);
+            return ResponseEntity.ok().build();
+        } catch (Exception e) {
+            logger.error("Error processing label event for driver {}: {}",
+                    (labelEvent != null ? labelEvent.getDriverId() : "unknown"), e.getMessage(), e);
+            return ResponseEntity.internalServerError().body("An internal error occurred while processing the label event.");
         }
     }
 
