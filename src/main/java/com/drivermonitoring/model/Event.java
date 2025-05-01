@@ -22,9 +22,9 @@ public class Event {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long eventId;
     
-    private Long sessionId; // FK to DriverSession
-    
     private String driverId; // For direct queries by driver
+    
+    private Long sessionId; // FK to DriverSession
     
     private LocalDateTime startTime;
     
@@ -34,26 +34,14 @@ public class Event {
     
     private String eventType; // "DISTRACTED" or "DROWSY"
     
-    @Column(columnDefinition = "CLOB")
-    private String metadata; // JSON with additional metrics (EAR value, etc.)
-    
     @Column(nullable = true)
     private Float earValue; // Значение EAR (среднее или последнее)
 
     @Column(nullable = true)
-    private Float leftEar; // Значение EAR для левого глаза
-
-    @Column(nullable = true)
-    private Float rightEar; // Значение EAR для правого глаза
-
-    @Column(length = 32, nullable = true)
-    private String headDirection; // Направление головы (например, "FORWARD", "LEFT", "RIGHT", "DOWN")
-
-    @Column(nullable = true)
     private Boolean faceDetected; // Было ли обнаружено лицо
-
-    @Column(length = 32, nullable = true)
-    private String featureSource; // Источник данных (например, "MediaPipe)
+    
+    @Column(columnDefinition = "CLOB")
+    private String metadata; // JSON with additional metrics (EAR value, etc.)
     
     // Constructor for simple events
     public Event(Long sessionId, String driverId, String eventType, float duration) {

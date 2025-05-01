@@ -20,18 +20,18 @@ public class DriverAnalyticsServiceImpl implements DriverAnalyticsService {
     @Override
     public FatiguePrediction getFatiguePrediction(String driverId) {
         DriverSession session = sessionService.getActiveSession(driverId);
-        if (session == null) return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Нет активной сессии");
+        if (session == null) return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Нет активной сессии", "Нет угрозы", 0f, 0f);
         LocalDateTime now = LocalDateTime.now();
-        var features = featureExtractor.extractFeatures(driverId, session.getStartTime(), now);
+        var features = featureExtractor.extractFeaturesBySession(session.getSessionId(), session.getStartTime(), now);
         return aiModel.predict(features);
     }
 
     @Override
     public FatiguePrediction getFatiguePrediction(String driverId, int periodMinutes) {
         DriverSession session = sessionService.getActiveSession(driverId);
-        if (session == null) return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Нет активной сессии");
+        if (session == null) return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Нет активной сессии", "Нет угрозы", 0f, 0f);
         LocalDateTime now = LocalDateTime.now();
-        var features = featureExtractor.extractFeatures(driverId, session.getStartTime(), now, periodMinutes);
+        var features = featureExtractor.extractFeaturesBySession(session.getSessionId(), session.getStartTime(), now, periodMinutes);
         return aiModel.predict(features);
     }
 }

@@ -21,21 +21,61 @@ public class MockAIFatiguePredictionModel implements PredictionModel {
     public FatiguePrediction predict(Map<String, Float> features) {
         float distractedTimeFraction = features.getOrDefault("distractedTimeFraction", 0f);
         float drowsyTimeFraction = features.getOrDefault("drowsyTimeFraction", 0f);
-        float blinkRate = features.getOrDefault("blinkRate", 0f); // blinkRate должен быть в мин^-1
+        float blinkRate = features.getOrDefault("blinkRate", 0f);
+        float drivingDuration = features.getOrDefault("drivingDuration", 0f);
+        float timeOfDay = features.getOrDefault("timeOfDay", 0f);
 
-        // Явное разделение состояний
-        boolean isDrowsy = drowsyTimeFraction > 0.1f || blinkRate > 24;
-        boolean isDistracted = distractedTimeFraction > 0.1f;
+        // Оценка вероятностей по каждому фактору
+        float drowsyProb = Math.min(1.0f, 0.5f * drowsyTimeFraction + 0.3f * (blinkRate / 30f) + 0.2f * drivingDuration);
+        float distractedProb = Math.min(1.0f, 0.7f * distractedTimeFraction + 0.3f * drivingDuration);
 
-        if (isDrowsy) {
-            // Сонливость всегда приоритетнее
-            return new FatiguePrediction(FatiguePrediction.RiskLevel.HIGH, 1f, 0, "Водитель засыпает");
+        boolean isDrowsy = drowsyProb > 0.5f;
+        boolean isDistracted = distractedProb > 0.5f;
+
+        String dangerType;
+        String dangerTypeText;
+        if (isDrowsy && isDistracted) {
+            dangerType = "drowsy_and_distracted";
+            dangerTypeText = "Сонливость и отвлечение";
+        } else if (isDrowsy) {
+            dangerType = "drowsy";
+            dangerTypeText = "Сонливость";
         } else if (isDistracted) {
-            // Только отвлечения, без сонливости
-            return new FatiguePrediction(FatiguePrediction.RiskLevel.MEDIUM, 0.5f, 10, "Водитель часто отвлекается");
+            dangerType = "distracted";
+            dangerTypeText = "Отвлечение";
         } else {
-            return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Всё нормально");
+            dangerType = "none";
+            dangerTypeText = "Нет угрозы";
         }
+
+        // Интегральная вероятность риска
+        float probability = Math.max(drowsyProb, distractedProb);
+        FatiguePrediction.RiskLevel riskLevel = probability > 0.8f ? FatiguePrediction.RiskLevel.HIGH : probability > 0.4f ? FatiguePrediction.RiskLevel.MEDIUM : FatiguePrediction.RiskLevel.LOW;
+        int minutes = estimateTimeToHighRisk(probability, features);
+
+        String recommendation;
+        switch (dangerType) {
+            case "drowsy":
+                recommendation = "Внимание: признаки сонливости!";
+                break;
+            case "distracted":
+                recommendation = "Внимание: признаки отвлечения!";
+                break;
+            case "drowsy_and_distracted":
+                recommendation = "Внимание: обнаружены и сонливость, и отвлечение!";
+                break;
+            default:
+                recommendation = "Всё нормально. Продолжайте движение.";
+        }
+        return new FatiguePrediction(
+            riskLevel,
+            probability,
+            minutes,
+            recommendation,
+            dangerTypeText,
+            drowsyProb,
+            distractedProb
+        );
     }
 
     @Override
@@ -49,7 +89,8 @@ public class MockAIFatiguePredictionModel implements PredictionModel {
         }
     }
 
-    // Оценка времени до высокого риска (очень упрощённо)
+    // Оценка времени до высокого риска (очень упрощённо) для будущего использования в реальной модели
+    // В реальной модели это будет более сложная логика, основанная на данных
     private int estimateTimeToHighRisk(float probability, Map<String, Float> features) {
         if (probability >= 0.6f) return 0;
         float rate = 0.01f + features.getOrDefault("drowsyEvents", 0.01f) + features.getOrDefault("drivingDuration", 0.01f);

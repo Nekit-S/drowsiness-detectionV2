@@ -107,19 +107,11 @@ public class EventLoggingServiceImpl implements EventLoggingService {
 
             // Извлекаем ключевые признаки для отдельных полей
             Float earValue = safeMetadata.containsKey("earValue") ? parseFloatSafe(safeMetadata.get("earValue")) : null;
-            Float leftEar = safeMetadata.containsKey("leftEar") ? parseFloatSafe(safeMetadata.get("leftEar")) : null;
-            Float rightEar = safeMetadata.containsKey("rightEar") ? parseFloatSafe(safeMetadata.get("rightEar")) : null;
-            String headDirection = safeMetadata.containsKey("headDirection") ? String.valueOf(safeMetadata.get("headDirection")) : null;
             Boolean faceDetected = safeMetadata.containsKey("faceDetected") ? parseBooleanSafe(safeMetadata.get("faceDetected")) : null;
-            String featureSource = safeMetadata.containsKey("featureSource") ? String.valueOf(safeMetadata.get("featureSource")) : null;
 
             // Удаляем эти признаки из JSON, чтобы не дублировать
             safeMetadata.remove("earValue");
-            safeMetadata.remove("leftEar");
-            safeMetadata.remove("rightEar");
-            safeMetadata.remove("headDirection");
             safeMetadata.remove("faceDetected");
-            safeMetadata.remove("featureSource");
 
             // Add timestamp if not present
             safeMetadata.putIfAbsent("timestamp", System.currentTimeMillis());
@@ -146,15 +138,11 @@ public class EventLoggingServiceImpl implements EventLoggingService {
                 metadataJson
             );
             event.setEarValue(earValue);
-            event.setLeftEar(leftEar);
-            event.setRightEar(rightEar);
-            event.setHeadDirection(headDirection);
             event.setFaceDetected(faceDetected);
-            event.setFeatureSource(featureSource);
 
             Event savedEvent = eventRepository.save(event);
             logger.info("Logged {} event with metadata from {} for driver {}, duration: {}s, session: {}",
-                    driverState, featureSource != null ? featureSource : safeMetadata.getOrDefault("source", "unknown"), driverId, duration, session.getSessionId());
+                    driverState, safeMetadata.getOrDefault("source", "unknown"), driverId, duration, session.getSessionId());
 
             return savedEvent;
         } catch (Exception e) {
@@ -184,6 +172,7 @@ public class EventLoggingServiceImpl implements EventLoggingService {
             metadata.put("label", labelEvent.getLabel());
             metadata.put("label_timestamp", labelEvent.getTimestamp());
             metadata.put("sessionId", labelEvent.getSessionId());
+            // context больше не сохраняем
             // Сохраняем eventType = LABEL, duration = 0
             String metadataJson = objectMapper.writeValueAsString(metadata);
             Event event = new Event(

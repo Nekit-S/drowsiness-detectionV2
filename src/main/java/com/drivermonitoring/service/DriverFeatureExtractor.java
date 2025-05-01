@@ -87,6 +87,65 @@ public class DriverFeatureExtractor {
         return extractFeatures(driverId, sessionStart, now, 30);
     }
 
+    // Новый метод: извлекает признаки только по событиям текущей сессии
+    public Map<String, Float> extractFeaturesBySession(Long sessionId, LocalDateTime sessionStart, LocalDateTime now, int periodMinutes) {
+        if (sessionId == null) return Collections.emptyMap();
+        List<Event> recentEvents = eventRepository.findBySessionId(sessionId)
+                .stream()
+                .filter(e -> e.getStartTime() != null && e.getStartTime().isAfter(now.minusMinutes(periodMinutes)))
+                .collect(Collectors.toList());
+        // ...далее копируем логику из extractFeatures...
+        List<Float> earValues = recentEvents.stream()
+                .map(Event::getEarValue)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        float avgEar = earValues.isEmpty() ? 0.3f : (float) earValues.stream().mapToDouble(f -> f).average().orElse(0.3);
+        float minEar = earValues.isEmpty() ? 0.3f : Collections.min(earValues);
+        long drowsyEvents = recentEvents.stream()
+                .filter(e -> "DROWSY".equalsIgnoreCase(e.getEventType()))
+                .count();
+        long distractionEvents = recentEvents.stream()
+                .filter(e -> "DISTRACTED".equalsIgnoreCase(e.getEventType()))
+                .count();
+        float drivingDuration = sessionStart != null ? (float) Duration.between(sessionStart, now).toMinutes() : 0f;
+        float timeOfDayFactor = calculateTimeOfDayFactor(now);
+        long blinkEvents = recentEvents.stream()
+                .filter(e -> e.getMetadata() != null && e.getMetadata().contains("blink"))
+                .count();
+        float blinkRate = blinkEvents / 30.0f;
+        float periodSeconds = periodMinutes * 60f;
+        float drowsyTime = recentEvents.stream()
+            .filter(e -> "DROWSY".equalsIgnoreCase(e.getEventType()))
+            .map(Event::getDuration)
+            .filter(Objects::nonNull)
+            .reduce(0f, Float::sum);
+        float distractedTime = recentEvents.stream()
+            .filter(e -> "DISTRACTED".equalsIgnoreCase(e.getEventType()))
+            .map(Event::getDuration)
+            .filter(Objects::nonNull)
+            .reduce(0f, Float::sum);
+        float drowsyTimeFraction = periodSeconds > 0 ? drowsyTime / periodSeconds : 0f;
+        float distractedTimeFraction = periodSeconds > 0 ? distractedTime / periodSeconds : 0f;
+        Map<String, Float> features = new HashMap<>();
+        features.put("earValue", avgEar);
+        features.put("minEar", minEar);
+        features.put("drowsyEvents", drowsyEvents / 30.0f);
+        features.put("distractionCount", distractionEvents / 30.0f);
+        features.put("drivingDuration", drivingDuration / 120.0f);
+        features.put("timeOfDay", timeOfDayFactor);
+        features.put("blinkRate", blinkRate);
+        features.put("drowsyEventsCount", (float)drowsyEvents);
+        features.put("distractionEventsCount", (float)distractionEvents);
+        features.put("drowsyTimeFraction", drowsyTimeFraction);
+        features.put("distractedTimeFraction", distractedTimeFraction);
+        return features;
+    }
+
+    // Перегрузка для 30 минут по умолчанию
+    public Map<String, Float> extractFeaturesBySession(Long sessionId, LocalDateTime sessionStart, LocalDateTime now) {
+        return extractFeaturesBySession(sessionId, sessionStart, now, 30);
+    }
+
     // Фактор времени суток по руководству
     public float calculateTimeOfDayFactor(LocalDateTime time) {
         int hour = time.getHour();
