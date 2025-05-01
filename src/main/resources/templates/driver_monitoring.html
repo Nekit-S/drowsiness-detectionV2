@@ -223,9 +223,9 @@
             const landmarks = results.multiFaceLandmarks[0];
 
             // Отрисовываем ключевые точки лица (опционально)
-            // drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
-            // drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
-            // drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
+            drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 0.5});
+            drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
+            drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
 
             // --- Оценка позы головы --- // NEW
             yawAngle = calculateHeadPose(landmarks);
@@ -284,6 +284,16 @@
                 if (currentState !== 'NORMAL' && lastEyeCloseTime === null) { // Only update if not currently closing eyes
                      updateDriverState('NORMAL', 0, { yawAngle: yawAngle });
                 }
+            }
+
+            // В onResults после расчёта avgEAR:
+            detectBlink(avgEAR);
+            const blinkRate = getWeightedBlinkRate();
+            if (blinkRate > BLINK_RATE_ALERT) {
+                updateDriverState('DROWSY', 1, { blinkRate: blinkRate });
+            } else if (!isDistractedByPose && avgEAR >= EAR_THRESHOLD) {
+                // Если частое моргание прошло, глаза открыты и нет отвлечения — сбрасываем в NORMAL
+                updateDriverState('NORMAL', 0, { blinkRate: blinkRate });
             }
 
         } else {
@@ -664,41 +674,23 @@
         } else {
             isBlinking = false;
         }
-        blinkTimestamps = blinkTimestamps.filter(ts => now - ts < 60000);
+        // Оставляем только моргания за последние 30 минут (1800000 мс)
+        blinkTimestamps = blinkTimestamps.filter(ts => now - ts < 1800000);
     }
 
-    function getBlinkRate() {
-        return blinkTimestamps.length;
+    // Взвешенный blinkRate: свежие моргания важнее
+    function getWeightedBlinkRate() {
+        const now = Date.now();
+        let weightedSum = 0;
+        for (const ts of blinkTimestamps) {
+            const ageSec = (now - ts) / 1000;
+            // Экспоненциальное затухание: характерное время 15 сек
+            const weight = Math.exp(-ageSec / 15);
+            weightedSum += weight;
+        }
+        // Масштабируем к минуте (чтобы было привычно)
+        return weightedSum * (60 / 15); // 15 — характерное время затухания
     }
-
-    // В onResults после расчёта avgEAR:
-            detectBlink(avgEAR);
-            const blinkRate = getBlinkRate();
-            if (blinkRate > BLINK_RATE_ALERT) {
-                updateDriverState('DROWSY', 1, { blinkRate: blinkRate });
-            }
-
-            // === Gaze direction logic (DISABLED FOR DEMO) ===
-            // const gazeDirection = detectGazeDirection(landmarks);
-            // if (gazeDirection !== 'CENTER') {
-            //     if (lastGazeDirection === gazeDirection) {
-            //         if (!gazeDistractStart) gazeDistractStart = Date.now();
-            //         else if (Date.now() - gazeDistractStart > GAZE_DISTRACT_DURATION) {
-            //             updateDriverState('DISTRACTED', (Date.now() - gazeDistractStart) / 1000, {
-            //                 gazeDirection: gazeDirection,
-            //                 faceDetected: true,
-            //                 timestamp: Date.now()
-            //             });
-            //             gazeDistractStart = Date.now(); // сбрасываем для повторного срабатывания
-            //         }
-            //     } else {
-            //         lastGazeDirection = gazeDirection;
-            //         gazeDistractStart = Date.now();
-            //     }
-            // } else {
-            //     lastGazeDirection = 'CENTER';
-            //     gazeDistractStart = null;
-            // }
-    </script>
+</script>
 </body>
 </html>
