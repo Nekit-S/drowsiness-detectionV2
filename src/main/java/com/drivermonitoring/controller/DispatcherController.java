@@ -51,13 +51,71 @@ public class DispatcherController {
     @GetMapping("/dispatcher")
     public String dispatcherPanel(Model model) {
         List<Driver> drivers = driverRepository.findAll();
-        // Формируем список с оценкой
         List<HashMap<String, String>> driverInfos = new ArrayList<>();
         for (Driver driver : drivers) {
             HashMap<String, String> info = new HashMap<>();
             info.put("driverName", driver.getDriverName());
             info.put("driverId", driver.getDriverId());
-            info.put("rating", driverRatingService.getDriverRating(driver.getDriverId()));
+            // --- Новый расчёт: используем ту же логику, что и в driverStats ---
+            List<DriverSession> sessions = sessionService.getSessionsForDriver(driver.getDriverId());
+            float totalDuration = 0f;
+            float drowsyTime = 0f;
+            float distractedTime = 0f;
+            float normalTime = 0f;
+            int sessionCount = 0;
+            for (DriverSession session : sessions) {
+                if (session.getStartTime() == null || session.getEndTime() == null) continue;
+                sessionCount++;
+                float sessionDuration = java.time.Duration.between(session.getStartTime(), session.getEndTime()).getSeconds();
+                totalDuration += sessionDuration;
+                List<Event> events = eventRepository.findBySessionId(session.getSessionId());
+                List<Interval> drowsyIntervals = new ArrayList<>();
+                List<Interval> distractedIntervals = new ArrayList<>();
+                for (Event e : events) {
+                    if (e.getStartTime() == null || e.getEndTime() == null) continue;
+                    if ("DROWSY".equalsIgnoreCase(e.getEventType())) {
+                        drowsyIntervals.add(new Interval(e.getStartTime(), e.getEndTime()));
+                    } else if ("DISTRACTED".equalsIgnoreCase(e.getEventType())) {
+                        distractedIntervals.add(new Interval(e.getStartTime(), e.getEndTime()));
+                    }
+                }
+                List<Interval> mergedDrowsy = mergeIntervals(drowsyIntervals);
+                List<Interval> mergedDistracted = mergeIntervals(distractedIntervals);
+                float sessionDrowsy = 0f;
+                for (Interval i : mergedDrowsy) sessionDrowsy += i.durationSeconds();
+                float sessionDistracted = 0f;
+                for (Interval i : mergedDistracted) sessionDistracted += i.durationSeconds();
+                List<Interval> allBusy = new ArrayList<>();
+                allBusy.addAll(mergedDrowsy);
+                allBusy.addAll(mergedDistracted);
+                List<Interval> mergedBusy = mergeIntervals(allBusy);
+                float busyTime = 0f;
+                for (Interval i : mergedBusy) busyTime += i.durationSeconds();
+                float sessionNormal = sessionDuration - busyTime;
+                if (events.isEmpty()) sessionNormal = sessionDuration;
+                drowsyTime += sessionDrowsy;
+                distractedTime += sessionDistracted;
+                normalTime += sessionNormal;
+            }
+            float normalPercent = totalDuration > 0 ? normalTime / totalDuration * 100f : 0f;
+            // --- Формируем ту же оценку, что и в driverStats ---
+            String summary;
+            String summaryClass;
+            if (normalPercent > 90) {
+                summary = "Высокий уровень внимания";
+                summaryClass = "text-success";
+            } else if (normalPercent > 75) {
+                summary = "Средний уровень внимания";
+                summaryClass = "text-warning";
+            } else if (normalPercent > 60) {
+                summary = "Часто отвлекается/усталость";
+                summaryClass = "text-warning";
+            } else {
+                summary = "Группа риска";
+                summaryClass = "text-danger";
+            }
+            info.put("summary", summary);
+            info.put("summaryClass", summaryClass);
             driverInfos.add(info);
         }
         model.addAttribute("driverInfos", driverInfos);
