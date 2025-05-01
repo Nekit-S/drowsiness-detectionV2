@@ -9,6 +9,7 @@ public class LabelEventDTO {
     private String label; // NORMAL, DROWSY, DISTRACTED
     private Map<String, Object> features; // агрегированные признаки
     private boolean isLabeled;
+    private Map<String, Object> context; // контекст разметки (история, освещённость и т.д.)
 
     public String getDriverId() { return driverId; }
     public void setDriverId(String driverId) { this.driverId = driverId; }
@@ -27,4 +28,7 @@ public class LabelEventDTO {
 
     public boolean isLabeled() { return isLabeled; }
     public void setLabeled(boolean labeled) { isLabeled = labeled; }
+
+    public Map<String, Object> getContext() { return context; }
+    public void setContext(Map<String, Object> context) { this.context = context; }
 }

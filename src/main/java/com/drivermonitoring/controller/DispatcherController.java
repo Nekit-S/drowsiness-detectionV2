@@ -148,13 +148,18 @@ class DispatcherApiController {
                     try {
                         Map<String, Object> meta = objectMapper.readValue(e.getMetadata(), Map.class);
                         Map<String, Object> features = (Map<String, Object>) meta.get("features");
-                        return Map.of(
-                                "driverId", e.getDriverId(),
-                                "sessionId", e.getSessionId(),
-                                "label", meta.get("label"),
-                                "timestamp", meta.get("label_timestamp"),
-                                "features", features
-                        );
+                        // Новый блок: добавляем context, если есть
+                        Object context = meta.get("context");
+                        Map<String, Object> result = new HashMap<>();
+                        result.put("driverId", e.getDriverId());
+                        result.put("sessionId", e.getSessionId());
+                        result.put("label", meta.get("label"));
+                        result.put("timestamp", meta.get("label_timestamp"));
+                        result.put("features", features);
+                        if (context != null) {
+                            result.put("context", context);
+                        }
+                        return result;
                     } catch (Exception ex) {
                         return null;
                     }

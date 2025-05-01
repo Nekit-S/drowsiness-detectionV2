@@ -231,6 +231,22 @@
         function countState(windowSec, state) {
             return stateHistory.filter(e => (now - e.ts) / 1000 <= windowSec && e.state === state).length;
         }
+        // --- Новый блок: собираем историю для контекста ---
+        // История EAR за 60 сек
+        const earHistoryContext = earHistory.filter(e => (now - e.ts) / 1000 <= 60);
+        // История состояний за 60 сек
+        const stateHistoryContext = stateHistory.filter(e => (now - e.ts) / 1000 <= 60);
+        // История морганий (таймстемпы) за 60 сек
+        const blinkHistoryContext = blinkTimestamps.filter(ts => (now - ts) / 1000 <= 60);
+        // Можно добавить roll/yaw/faceDetected если они собираются в других массивах
+        const context = {
+            earHistory: earHistoryContext,
+            stateHistory: stateHistoryContext,
+            blinkTimestamps: blinkHistoryContext
+            // rollHistory: ...
+            // yawHistory: ...
+            // faceDetectedHistory: ...
+        };
         const features = {
             weightedBlinkRate_1min: aggregateBlinkRate(60),
             weightedBlinkRate_5min: aggregateBlinkRate(300),
@@ -253,7 +269,8 @@
             timestamp: now,
             label: label,
             features: features,
-            is_labeled: true
+            is_labeled: true,
+            context: context // <--- добавляем контекст
         };
         fetch('/api/label-event', {
             method: 'POST',
@@ -266,6 +283,21 @@
                 alert('Ошибка при сохранении метки');
             }
         });
+    }
+
+    // --- Если есть датчик освещённости, слушаем его ---
+    if ('AmbientLightSensor' in window) {
+        try {
+            const sensor = new AmbientLightSensor();
+            sensor.addEventListener('reading', () => {
+                window.lastLightLevel = sensor.illuminance;
+            });
+            sensor.start();
+        } catch (e) {
+            window.lastLightLevel = null;
+        }
+    } else {
+        window.lastLightLevel = null;
     }
 
     // Инициализация FaceMesh
@@ -498,11 +530,12 @@
     // Отправляет событие на сервер для логирования
     function sendEventToServer(state, duration, metadata) {
         // Добавляем источник события и временную метку в метаданные, если их нет
+        const now = Date.now();
         const finalMetadata = {
-            source: 'MediaPipe', // Указываем источник
-            faceDetected: metadata.faceDetected !== undefined ? metadata.faceDetected : true, // Значение по умолчанию, если не указано
-            timestamp: metadata.timestamp || Date.now(), // Используем переданное или текущее время
-            ...metadata // Добавляем остальные метаданные
+            source: 'MediaPipe',
+            faceDetected: metadata.faceDetected !== undefined ? metadata.faceDetected : true,
+            timestamp: metadata.timestamp || now,
+            ...metadata
         };
 
         // Добавляем sessionId в метаданные (для консистентности с DTO)
