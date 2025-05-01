@@ -23,10 +23,15 @@ public class MockAIFatiguePredictionModel implements PredictionModel {
         float drowsyTimeFraction = features.getOrDefault("drowsyTimeFraction", 0f);
         float blinkRate = features.getOrDefault("blinkRate", 0f); // blinkRate должен быть в мин^-1
 
-        // Только три рекомендации
-        if (drowsyTimeFraction > 0.1f || blinkRate > 24) {
+        // Явное разделение состояний
+        boolean isDrowsy = drowsyTimeFraction > 0.1f || blinkRate > 24;
+        boolean isDistracted = distractedTimeFraction > 0.1f;
+
+        if (isDrowsy) {
+            // Сонливость всегда приоритетнее
             return new FatiguePrediction(FatiguePrediction.RiskLevel.HIGH, 1f, 0, "Водитель засыпает");
-        } else if (distractedTimeFraction > 0.1f) {
+        } else if (isDistracted) {
+            // Только отвлечения, без сонливости
             return new FatiguePrediction(FatiguePrediction.RiskLevel.MEDIUM, 0.5f, 10, "Водитель часто отвлекается");
         } else {
             return new FatiguePrediction(FatiguePrediction.RiskLevel.LOW, 0f, 120, "Всё нормально");
