@@ -378,10 +378,11 @@
             faceDetected = true;
             const landmarks = results.multiFaceLandmarks[0];
 
-            // Отрисовываем ключевые точки лица (опционально)
-            drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 0.5});
-            drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
-            drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
+            // Отрисовываем только ключевые контуры лица и глаза
+            drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C0', lineWidth: 0.5}); // Только контуры лица
+            // Оба глаза — зелёным цветом, толщина уменьшена на ~30% (стандарт 1, стало 0.7)
+            drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30', lineWidth: 0.7});
+            drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#30FF30', lineWidth: 0.7});
 
             // --- Оценка позы головы (yaw и roll) ---
             const pose = calculateHeadPose(landmarks);

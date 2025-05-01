@@ -46,9 +46,7 @@
                         <tr th:each="driver : ${driverInfos}">
                             <td th:text="${driver.driverName}">Driver Name</td>
                             <td th:text="${driver.driverId}">Driver ID</td>
-                            <td>
-                                <span class="text-success">Надёжный</span>
-                            </td>
+                            <td th:text="${driver.summary}" th:classappend="${driver.summaryClass}">Оценка</td>
                             <td>
                                 <a th:href="@{/dispatcher/driver/{driverId}(driverId=${driver.driverId})}" class="btn btn-primary btn-sm">Статистика</a>
                             </td>
