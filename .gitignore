@@ -1,0 +1,59 @@
+# Java & Gradle
+/build/
+/.gradle/
+/out/
+!gradle/wrapper/gradle-wrapper.jar
+!gradle/wrapper/gradle-wrapper.properties
+
+# IDEs
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS/system files
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
+
+# Logs
+*.log
+/logs/
+
+# H2 database and local data
+/data/
+*.mv.db
+*.h2.db
+
+# Test reports and cache
+/test-output/
+/reports/
+/build/reports/
+
+# Jupyter Notebooks
+*.ipynb_checkpoints/
+
+# Docker
+# (DO NOT ignore Dockerfile, docker-compose.yml, run.sh, update-dependencies.sh)
+
+# Ignore env files (if used)
+.env
+
+# Ignore generated files
+/build/generated/
+
+# Node/npm (if ever used for frontend)
+node_modules/
+
+# Exclude all except source, config, Docker, and docs
+!src/
+!build.gradle
+!settings.gradle
+!Dockerfile
+!docker-compose.yml
+!README.md
+!HELP.md
+!update-dependencies.sh
+!instructions/
