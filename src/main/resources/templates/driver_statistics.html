@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Driver Statistics</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.1/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-moment@1.0.0"></script>
+</head>
+<body>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h1>Driver Statistics</h1>
+        <a href="/dispatcher" class="btn btn-secondary">Back to Dispatcher Panel</a>
+    </div>
+
+    <div th:if="${driver}">
+        <h2 th:text="${driver.driverName} + ' (' + ${driver.driverId} + ')'">Driver Name (ID)</h2>
+        <div class="mb-3">
+            <span>Общая оценка: </span>
+            <span class="text-success">Надёжный</span>
+        </div>
+    </div>
+    <div th:unless="${driver}">
+        <h2>Driver not found</h2>
+    </div>
+    <div th:if="${driver}">
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <h3>Сводка (имитация для демо)</h3>
+                <ul class="list-group">
+                    <li class="list-group-item">Количество сессий: <b>3</b><br>Средняя длительность сессии: <b>3600</b> сек.<br>% времени в норме: <b>97%</b><br>% времени отвлечён: <b>3%</b><br>% времени сонлив: <b>0%</b><br>Средний EAR: <b>0.27</b><br>Средняя частота моргания: <b>16</b> в мин.</li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <h3>Распределение времени по состояниям (имитация)</h3>
+                <canvas id="pieChart" width="300" height="300"></canvas>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    // Pie Chart для распределения времени по состояниям (имитация)
+    let drowsyPercent = 0, distractedPercent = 3, normalPercent = 97;
+    if (document.getElementById('pieChart')) {
+        const pieCtx = document.getElementById('pieChart').getContext('2d');
+        new Chart(pieCtx, {
+            type: 'pie',
+            data: {
+                labels: ['Всё нормально', 'Часто отвлекается', 'Засыпает'],
+                datasets: [{
+                    data: [normalPercent, distractedPercent, drowsyPercent],
+                    backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
+                }]
+            },
+            options: {
+                responsive: false,
+                plugins: {
+                    legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

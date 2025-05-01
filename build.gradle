@@ -1,0 +1,53 @@
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '3.4.5'
+	id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.drivermonitoring'
+version = '0.0.1-SNAPSHOT'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(17)
+	}
+}
+
+configurations {
+	compileOnly {
+		extendsFrom annotationProcessor
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// Spring Boot основные зависимости
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    
+    // База данных H2
+    runtimeOnly 'com.h2database:h2'
+    
+    // Lombok для уменьшения шаблонного кода
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    // Jackson для обработки JSON
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.15.2' // Use a specific, recent version
+
+    // Logging - Managed by Spring Boot Starter Logging (included via web starter)
+    // implementation 'org.slf4j:slf4j-api:2.0.5' // Remove explicit version
+    // implementation 'ch.qos.logback:logback-classic:1.4.6' // Remove explicit version
+    
+    // Разработка и тестирование
+    developmentOnly 'org.springframework.boot:spring-boot-devtools'
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}

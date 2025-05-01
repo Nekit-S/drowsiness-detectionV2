@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Dispatcher Panel</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+</head>
+<body>
+<div class="container mt-4">
+        <h1>Dispatcher Panel</h1>
+        <h2>Select Driver to View Statistics</h2>
+        <table class="table table-bordered table-hover">
+            <thead class="thead-light">
+                <tr>
+                    <th>Имя</th>
+                    <th>ID</th>
+                    <th>Общая оценка</th>
+                    <th>Статистика</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr th:each="driver : ${driverInfos}">
+                    <td th:text="${driver.driverName}">Driver Name</td>
+                    <td th:text="${driver.driverId}">Driver ID</td>
+                    <td>
+                        <span class="text-success">Надёжный</span>
+                    </td>
+                    <td>
+                        <a th:href="@{/dispatcher/driver/{driverId}(driverId=${driver.driverId})}" class="btn btn-primary btn-sm">Статистика</a>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</body>
+</html>

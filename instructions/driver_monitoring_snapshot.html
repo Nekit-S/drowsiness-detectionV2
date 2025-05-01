@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Driver Monitoring</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Подключение библиотек MediaPipe -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"></script>
+    <style>
+        /* Basic styling for video and notification */
+        #videoContainer {
+            position: relative;
+            width: 640px; /* Match performance requirements */
+            height: 480px;
+            margin: auto;
+            border: 1px solid black;
+        }
+        #videoElement {
+            width: 100%;
+            height: 100%;
+        }
+        #notificationArea {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            min-width: 150px; /* Ensure alert is visible */
+        }
+
+        /* Styles from TASK_05 */
+        .video-container {
+            position: relative;
+            width: 640px;
+            height: 480px;
+            margin: 0 auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        #videoElement {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        #outputCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+        }
+
+        #notificationArea {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            z-index: 10;
+            min-width: 150px; /* Ensure alert is visible */
+        }
+
+        .status-indicator {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            padding: 5px;
+            border-radius: 5px;
+            text-align: center;
+            font-weight: bold;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+<div class="container mt-3">
+    <h2 th:text="'Monitoring Driver: ' + ${driverName} + ' (ID: ' + ${driverId} + ')'">Monitoring Driver</h2>
+
+    <!-- Hidden fields for driverId and sessionId -->
+    <input type="hidden" id="driverId" th:value="${driverId}">
+    <input type="hidden" id="sessionId" th:value="${sessionId}">
+
+    <!-- Video Feed Area with Canvas -->
+    <div class="video-container" id="videoContainer">
+        <video id="videoElement" autoplay playsinline></video>
+        <canvas id="outputCanvas" width="640" height="480"></canvas>
+        <!-- Notification Area -->
+        <div id="notificationArea">
+            <!-- Notifications will be injected here by JavaScript -->
+            <div class="alert alert-secondary" role="alert">
+                Status: Initializing...
+            </div>
+        </div>
+        <!-- Status Indicator -->
+        <div id="statusIndicator" class="status-indicator bg-success text-white">
+            Status: Normal
+        </div>
+    </div>
+
+    <!-- Exit Button -->
+    <div class="mt-3 text-center">
+        <a th:href="@{/driver/exit}" class="btn btn-danger">Exit Session</a>
+    </div>
+
+    <!-- Блок рекомендаций для водителя -->
+    <div class="mt-4" id="driverRecommendationBox">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">Рекомендация для водителя</h5>
+                <div id="driverRecommendationText" class="fw-bold text-center text-success">
+                    Всё в порядке. Продолжайте движение и следите за дорогой.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Переключатель режима анализа -->
+    <div class="mt-3 mb-2 text-center">
+        <span>Период анализа:</span>
+        <button id="demoModeBtn" class="btn btn-outline-primary btn-sm mx-1 active" onclick="setAnalysisPeriod(1)">Демо (1 мин)</button>
+        <button id="realModeBtn" class="btn btn-outline-secondary btn-sm mx-1" onclick="setAnalysisPeriod(30)">Реальный (30 мин)</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // --- JavaScript for MediaPipe Face Mesh and Notifications ---
+
+    // Настройки и пороговые значения
+    const EAR_THRESHOLD = 0.2;     // Порог для определения закрытого глаза
+    const DROWSY_TIME = 2000;      // 2 секунды для определения сонливости
+    const YAW_THRESHOLD_DEGREES = 10; // Порог угла поворота головы для отвлечения (в градусах) // NEW
+    const FACE_MESH_CONFIG = {
+        maxNumFaces: 1,
+        refineLandmarks: true,
+        minDetectionConfidence: 0.5,
+        minTrackingConfidence: 0.5
+    };
+
+    // Состояние
+    let lastEyeCloseTime = null;
+    let currentState = 'NORMAL';
+    let faceMesh;
+    let camera;
+    let lastDistractionTime = null; // NEW: Track distraction start time
+    const DISTRACTION_DURATION_THRESHOLD = 1000; // NEW: Minimum duration (ms) to log distraction
+
+    // Получаем элементы DOM
+    const video = document.getElementById('videoElement');
+    const canvas = document.getElementById('outputCanvas');
+    const ctx = canvas.getContext('2d');
+    const driverId = document.getElementById('driverId').value;
+    const sessionId = document.getElementById('sessionId').value;
+    const notificationArea = document.getElementById('notificationArea');
+    const statusIndicator = document.getElementById('statusIndicator');
+
+    // === Переменная для периода анализа ===
+    let analysisPeriod = 1; // По умолчанию демо-режим (1 мин)
+    function setAnalysisPeriod(period) {
+        analysisPeriod = period;
+        // UI: выделить активную кнопку
+        document.getElementById('demoModeBtn').classList.toggle('active', period === 1);
+        document.getElementById('realModeBtn').classList.toggle('active', period === 30);
+    }
+
+    // Инициализация FaceMesh
+    function setupFaceMesh() {
+        if (!checkBrowserSupport()) return; // Проверка поддержки браузером
+
+        faceMesh = new FaceMesh({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`;
+        }});
+
+        faceMesh.setOptions(FACE_MESH_CONFIG);
+
+        faceMesh.onResults(onResults);
+
+        // Запускаем камеру
+        camera = new Camera(video, {
+            onFrame: async () => {
+                try {
+                    await faceMesh.send({image: video});
+                } catch (error) {
+                    console.error('MediaPipe FaceMesh Error:', error);
+                }
+            },
+            width: 640,
+            height: 480
+        });
+
+        camera.start().catch(err => {
+            console.error("Ошибка запуска камеры:", err);
+            notificationArea.innerHTML = `
+                <div class="alert alert-danger">
+                    Не удалось получить доступ к камере. Проверьте разрешения браузера.
+                </div>`;
+        });
+    }
+
+    // Обработка результатов FaceMesh
+    function onResults(results) {
+        // Очищаем канвас
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Рисуем изображение с камеры
+        ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+
+        let faceDetected = false;
+        let isDistractedByPose = false;
+        let yawAngle = 0; // NEW
+
+        if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
+            faceDetected = true;
+            const landmarks = results.multiFaceLandmarks[0];
+
+            // Отрисовываем ключевые точки лица (опционально)
+            // drawConnectors(ctx, landmarks, FACEMESH_TESSELATION, {color: '#C0C0C070', lineWidth: 1});
+            // drawConnectors(ctx, landmarks, FACEMESH_LEFT_EYE, {color: '#30FF30'});
+            // drawConnectors(ctx, landmarks, FACEMESH_RIGHT_EYE, {color: '#FF3030'});
+
+            // --- Оценка позы головы --- // NEW
+            yawAngle = calculateHeadPose(landmarks);
+            if (Math.abs(yawAngle) > YAW_THRESHOLD_DEGREES) {
+                isDistractedByPose = true;
+            }
+            // --- Конец оценки позы головы ---
+
+            // Рассчитываем EAR для определения сонливости
+            const leftEAR = calculateEAR(landmarks, LEFT_EYE_INDICES);
+            const rightEAR = calculateEAR(landmarks, RIGHT_EYE_INDICES);
+            const avgEAR = (leftEAR + rightEAR) / 2;
+
+            // Проверяем, закрыты ли глаза
+            if (avgEAR < EAR_THRESHOLD) {
+                // Глаза закрыты
+                if (lastEyeCloseTime === null) {
+                    lastEyeCloseTime = Date.now();
+                } else {
+                    const closeDuration = Date.now() - lastEyeCloseTime;
+                    if (closeDuration > DROWSY_TIME) {
+                        // Сонливость
+                        updateDriverState('DROWSY', closeDuration / 1000, {
+                            earValue: avgEAR,
+                            closeDuration: closeDuration,
+                            leftEAR: leftEAR,
+                            rightEAR: rightEAR,
+                            yawAngle: yawAngle // Include yaw
+                        });
+                        lastDistractionTime = null; // Reset distraction timer if drowsy
+                        return; // Exit early, drowsiness takes precedence
+                    }
+                }
+            } else {
+                // Глаза открыты
+                lastEyeCloseTime = null;
+            }
+
+            // Если не сонный, проверяем на отвлечение по позе
+            if (isDistractedByPose) {
+                 if (lastDistractionTime === null) {
+                     lastDistractionTime = Date.now();
+                 } else {
+                     const distractionDuration = Date.now() - lastDistractionTime;
+                     if (distractionDuration > DISTRACTION_DURATION_THRESHOLD) {
+                         updateDriverState('DISTRACTED', distractionDuration / 1000, {
+                             faceDetected: true,
+                             yawAngle: yawAngle, // Include yaw angle
+                             timestamp: Date.now()
+                         });
+                     }
+                 }
+            } else {
+                // Не отвлечен по позе и не сонный -> Нормальное состояние
+                lastDistractionTime = null;
+                if (currentState !== 'NORMAL' && lastEyeCloseTime === null) { // Only update if not currently closing eyes
+                     updateDriverState('NORMAL', 0, { yawAngle: yawAngle });
+                }
+            }
+
+        } else {
+            // Лицо не обнаружено
+            faceDetected = false;
+            lastEyeCloseTime = null; // Reset eye close timer if face is lost
+            if (lastDistractionTime === null) {
+                lastDistractionTime = Date.now();
+            } else {
+                const distractionDuration = Date.now() - lastDistractionTime;
+                if (distractionDuration > DISTRACTION_DURATION_THRESHOLD) {
+                    updateDriverState('DISTRACTED', distractionDuration / 1000, {
+                        faceDetected: false,
+                        timestamp: Date.now()
+                    });
+                }
+            }
+        }
+    }
+
+
+    // --- НОВАЯ ФУНКЦИЯ: Оценка позы головы (упрощенная) ---
+    function calculateHeadPose(landmarks) {
+        // Используем 3D координаты ключевых точек
+        // Индексы: Кончик носа: 1, Левый край лица: 234, Правый край лица: 454
+        //         Левый глаз (центр): 473, Правый глаз (центр): 468
+        const nose = landmarks[1];
+        const leftEye = landmarks[473] || landmarks[33]; // Fallback if iris not refined
+        const rightEye = landmarks[468] || landmarks[263]; // Fallback if iris not refined
+        const leftFaceEdge = landmarks[234];
+        const rightFaceEdge = landmarks[454];
+
+        if (!nose || !leftEye || !rightEye || !leftFaceEdge || !rightFaceEdge) {
+            console.warn("Недостаточно точек для оценки позы головы.");
+            return 0; // Невозможно рассчитать
+        }
+
+        // --- Метод 3: Использование 2D проекции 3D точек для оценки поворота ---
+        // Используем 3D точки для построения вектора взгляда
+        const faceCenterZ = (leftEye.z + rightEye.z) / 2;
+        const lookVectorX = nose.x - (leftEye.x + rightEye.x) / 2;
+        // Используем Z носа относительно Z глаз как меру глубины взгляда
+        // Чем больше разница Z, тем больше наклон (pitch), но мы используем X для yaw
+        const lookVectorZ = Math.abs(nose.z - faceCenterZ); // Используем абсолютное значение для знаменателя
+
+        // Угол рыскания (yaw) в радианах, используя atan2 для правильного квадранта
+        // atan2(y, x) -> atan2(горизонтальное_смещение_X, глубина_Z)
+        let yawRad = Math.atan2(lookVectorX, lookVectorZ + 0.01); // Добавляем малое значение к Z для избежания деления на ноль
+
+        // Преобразуем радианы в градусы
+        let yaw = yawRad * (180 / Math.PI);
+
+        // console.log(`Yaw Estimate: ${yaw.toFixed(1)} degrees`); // Для отладки
+        return yaw;
+    }
+    // --- Конец новой функции ---
+
+
+    // Рассчитывает Eye Aspect Ratio для определения закрытости глаз
+    function calculateEAR(landmarks, eyeIndices) {
+        // Получаем координаты ключевых точек глаза
+        const eyePoints = eyeIndices.map(index => landmarks[index]);
+
+        // Вертикальные расстояния
+        const height1 = distance(eyePoints[1], eyePoints[5]);
+        const height2 = distance(eyePoints[2], eyePoints[4]);
+
+        // Горизонтальное расстояние
+        const width = distance(eyePoints[0], eyePoints[3]);
+
+        // Рассчитываем EAR
+        return (height1 + height2) / (2 * width);
+    }
+
+    // Евклидово расстояние между двумя точками (2D)
+    function distance(p1, p2) {
+        if (!p1 || !p2) return 0;
+        return Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+    }
+
+    // Обновляет состояние водителя и отправляет данные на сервер
+    function updateDriverState(state, duration, metadata) {
+        // Обновляем только при изменении состояния ИЛИ если состояние не NORMAL (чтобы логировать продолжительные события)
+        if (currentState !== state || state !== 'NORMAL') {
+            // Для DROWSY и DISTRACTED, обновляем состояние, даже если оно то же,
+            // чтобы отправить обновленную продолжительность и метаданные
+            if (state === 'DROWSY' || state === 'DISTRACTED') {
+                 // Не меняем currentState, если он уже такой же, но отправляем событие
+                 if (currentState === state) {
+                     sendEventToServer(state, duration, metadata);
+                     return; // Не обновляем UI повторно, если состояние не изменилось
+                 }
+            }
+
+            currentState = state;
+            updateUI(state); // Обновляем UI при смене состояния
+
+            // Отправляем событие на сервер (для всех состояний кроме NORMAL)
+            if (state !== 'NORMAL') {
+                sendEventToServer(state, duration, metadata);
+            }
+        }
+    }
+
+    // Отправляет событие на сервер для логирования
+    function sendEventToServer(state, duration, metadata) {
+        // Добавляем источник события и временную метку в метаданные, если их нет
+        const finalMetadata = {
+            source: 'MediaPipe', // Указываем источник
+            faceDetected: metadata.faceDetected !== undefined ? metadata.faceDetected : true, // Значение по умолчанию, если не указано
+            timestamp: metadata.timestamp || Date.now(), // Используем переданное или текущее время
+            ...metadata // Добавляем остальные метаданные
+        };
+
+        // Добавляем sessionId в метаданные (для консистентности с DTO)
+        finalMetadata.sessionId = sessionId;
+        finalMetadata.eventType = state; // Добавляем тип события
+
+        console.log(`Attempting to send event: State=${state}, Duration=${duration.toFixed(3)}, DriverID=${driverId}, SessionID=${sessionId}`);
+        const payload = {
+            driverId: driverId,
+            sessionId: sessionId,
+            state: state,
+            duration: duration, // Отправляем длительность
+            metadata: finalMetadata // Отправляем расширенные метаданные
+        };
+        console.log('Payload:', JSON.stringify(payload));
+
+        fetch('/api/detection-event', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            console.log(`Server response status: ${response.status}`);
+            if (!response.ok) {
+                console.error('Server returned error:', response.statusText);
+                // Попытка прочитать тело ошибки
+                 response.text().then(text => console.error('Server error body:', text)).catch(() => {});
+            }
+            return response.text();
+        })
+        .then(text => {
+             // console.log('Server response body:', text); // Можно закомментировать для чистоты логов
+        })
+        .catch(error => console.error('Error sending event:', error));
+    }
+
+    // Индексы ключевых точек для глаз в MediaPipe Face Mesh
+    // Левый глаз: точки 362, 385, 387, 263, 373, 380
+    // Правый глаз: точки 33, 160, 158, 133, 153, 144
+    const LEFT_EYE_INDICES = [362, 385, 387, 263, 373, 380];  // Внешние точки левого глаза
+    const RIGHT_EYE_INDICES = [33, 160, 158, 133, 153, 144];  // Внешние точки правого глаза
+
+    // === Gaze direction detection ===
+    // Индексы для зрачка (iris) и центра глаз в MediaPipe
+    const LEFT_IRIS_INDEX = 474; // Центр левого зрачка
+    const RIGHT_IRIS_INDEX = 469; // Центр правого зрачка
+    function getLeftEyeCenter(landmarks) {
+        return {
+            x: (landmarks[362].x + landmarks[263].x) / 2,
+            y: (landmarks[362].y + landmarks[263].y) / 2
+        };
+    }
+    function getRightEyeCenter(landmarks) {
+        return {
+            x: (landmarks[33].x + landmarks[133].x) / 2,
+            y: (landmarks[33].y + landmarks[133].y) / 2
+        };
+    }
+    const GAZE_X_THRESHOLD = 0.04;
+    const GAZE_Y_THRESHOLD = 0.04;
+    function detectGazeDirection(landmarks) {
+        // Левый глаз
+        const leftIris = landmarks[LEFT_IRIS_INDEX];
+        const leftCenter = getLeftEyeCenter(landmarks);
+        // Правый глаз
+        const rightIris = landmarks[RIGHT_IRIS_INDEX];
+        const rightCenter = getRightEyeCenter(landmarks);
+        // Смещения
+        const dxL = leftIris.x - leftCenter.x;
+        const dyL = leftIris.y - leftCenter.y;
+        const dxR = rightIris.x - rightCenter.x;
+        const dyR = rightIris.y - rightCenter.y;
+        // Среднее по двум глазам
+        const dx = (dxL + dxR) / 2;
+        const dy = (dyL + dyR) / 2;
+        // Определяем направление
+        if (dx < -GAZE_X_THRESHOLD) return 'LEFT';
+        if (dx > GAZE_X_THRESHOLD) return 'RIGHT';
+        if (dy < -GAZE_Y_THRESHOLD) return 'UP';
+        if (dy > GAZE_Y_THRESHOLD) return 'DOWN';
+        return 'CENTER';
+    }
+
+    // Обновляет UI на основе состояния водителя
+    function updateUI(state) {
+        switch(state) {
+            case 'DROWSY':
+                showDrowsyNotification();
+                break;
+            case 'DISTRACTED':
+                showDistractedNotification();
+                break;
+            case 'NORMAL':
+            default:
+                showNormalNotification();
+                break;
+        }
+    }
+
+    // Показывает уведомление о нормальном состоянии
+    function showNormalNotification() {
+        notificationArea.innerHTML = `
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <strong>Status:</strong> Normal
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>`;
+
+        statusIndicator.className = 'status-indicator bg-success text-white';
+        statusIndicator.textContent = 'Status: Normal';
+    }
+
+    // --- Важно: Обновим текст уведомления для DISTRACTED --- // MODIFIED
+    function showDistractedNotification() {
+        notificationArea.innerHTML = `
+            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                <strong>Warning:</strong> Eyes on the road! Face not detected or turned away.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>`;
+
+        statusIndicator.className = 'status-indicator bg-warning text-dark';
+        statusIndicator.textContent = 'Status: Distracted';
+
+        // Воспроизводим звук уведомления (если звуки настроены)
+        // playAlertSound('distracted'); // Uncomment if sound files are available
+    }
+
+    // Показывает уведомление о сонливости
+    function showDrowsyNotification() {
+        notificationArea.innerHTML = `
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <strong>Warning:</strong> You appear drowsy! Consider taking a break.
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>`;
+
+        statusIndicator.className = 'status-indicator bg-danger text-white';
+        statusIndicator.textContent = 'Status: Drowsy';
+
+        // Воспроизводим звук уведомления (если звуки настроены)
+        // playAlertSound('drowsy'); // Uncomment if sound files are available
+    }
+
+    // Воспроизводит звук уведомления (Placeholder - requires sound files)
+    function playAlertSound(type) {
+        console.log(`Playing sound for: ${type}`); // Placeholder
+        // try {
+        //     const sound = type === 'drowsy' ? 'drowsy_alert.mp3' : 'distracted_alert.mp3';
+        //     const audio = new Audio('/sounds/' + sound); // Assumes a /sounds directory
+        //     audio.volume = 0.7;
+        //     audio.play().catch(e => console.log('Could not play alert sound:', e));
+        // } catch(e) {
+        //     console.log('Sound playback not supported');
+        // }
+    }
+
+    // Проверка поддержки браузером
+    function checkBrowserSupport() {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            notificationArea.innerHTML = `
+                <div class="alert alert-danger">
+                    Ваш браузер не поддерживает доступ к камере.
+                    Пожалуйста, используйте Chrome, Firefox или Edge.
+                </div>`;
+            return false;
+        }
+        // Check for MediaPipe compatibility (basic check)
+        if (typeof FaceMesh === 'undefined') {
+             notificationArea.innerHTML = `
+                <div class="alert alert-danger">
+                    Не удалось загрузить библиотеку MediaPipe FaceMesh.
+                    Проверьте подключение к интернету.
+                </div>`;
+            return false;
+        }
+        return true;
+    }
+
+    // Оптимизация производительности: остановка/запуск камеры при смене видимости вкладки
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            // Страница скрыта - приостанавливаем обработку
+            if (camera) camera.stop();
+            console.log("Camera stopped due to page visibility change.");
+        } else {
+            // Страница активна - возобновляем обработку
+            if (camera) {
+                 camera.start().catch(err => {
+                    console.error("Ошибка перезапуска камеры:", err);
+                    notificationArea.innerHTML = `
+                        <div class="alert alert-danger">
+                            Не удалось перезапустить камеру после смены вкладки.
+                        </div>`;
+                });
+                console.log("Camera restarted after page visibility change.");
+            }
+        }
+    });
+
+    // Запуск системы при загрузке страницы
+    document.addEventListener('DOMContentLoaded', setupFaceMesh);
+
+    // === Рекомендации для водителя в реальном времени ===
+    function updateDriverRecommendationBox(prediction) {
+        const box = document.getElementById('driverRecommendationBox');
+        const text = document.getElementById('driverRecommendationText');
+        if (!prediction) {
+            text.textContent = 'Нет данных для прогноза.';
+            text.className = 'fw-bold text-center text-secondary';
+            return;
+        }
+        let color = 'text-success';
+        let msg = '';
+        switch (prediction.riskLevel) {
+            case 'LOW':
+                color = 'text-success';
+                msg = 'Всё в порядке. Продолжайте движение и следите за дорогой.';
+                break;
+            case 'MEDIUM':
+                color = 'text-warning';
+                msg = 'Внимание! Возможна усталость или частое отвлечение. Сконцентрируйтесь на дороге, при необходимости сделайте перерыв.';
+                break;
+            case 'HIGH':
+                color = 'text-danger';
+                msg = 'Высокий риск усталости! Рекомендуется остановиться и отдохнуть.';
+                break;
+            default:
+                color = 'text-secondary';
+                msg = 'Нет данных для прогноза.';
+        }
+        text.textContent = msg;
+        text.className = 'fw-bold text-center ' + color;
+    }
+
+    // Периодически обновлять рекомендации (каждые 15 секунд)
+    function startDriverRecommendationPolling() {
+        const driverId = document.getElementById('driverId').value;
+        function poll() {
+            fetch(`/api/driver/${driverId}/prediction?period=${analysisPeriod}`)
+                .then(resp => resp.ok ? resp.json() : null)
+                .then(prediction => updateDriverRecommendationBox(prediction))
+                .catch(() => updateDriverRecommendationBox(null));
+            setTimeout(poll, 15000); // 15 секунд
+        }
+        poll();
+    }
+    document.addEventListener('DOMContentLoaded', startDriverRecommendationPolling);
+
+    // === Подсчёт морганий ===
+    let blinkTimestamps = [];
+    const BLINK_EAR_THRESHOLD = 0.21; // EAR ниже этого — моргание
+    const BLINK_MIN_INTERVAL = 150; // Минимальный интервал между морганиями (мс)
+    let lastBlinkTime = 0;
+    const BLINK_RATE_ALERT = 24; // морганий в минуту — порог для тревоги
+
+    function detectBlink(avgEAR) {
+        const now = Date.now();
+        if (avgEAR < BLINK_EAR_THRESHOLD && (now - lastBlinkTime > BLINK_MIN_INTERVAL)) {
+            blinkTimestamps.push(now);
+            lastBlinkTime = now;
+        }
+        // Очищаем старые моргания (старше 1 мин)
+        blinkTimestamps = blinkTimestamps.filter(ts => now - ts < 60000);
+    }
+
+    function getBlinkRate() {
+        return blinkTimestamps.length;
+    }
+
+    // В onResults после расчёта avgEAR:
+    // ...existing code...
+            detectBlink(avgEAR);
+            // ...existing code...
+            // Проверка частоты моргания
+            const blinkRate = getBlinkRate();
+            if (blinkRate > BLINK_RATE_ALERT) {
+                // Отправляем событие DROWSY с blinkRate
+                updateDriverState('DROWSY', 1, { blinkRate: blinkRate });
+            }
+
+            // === Gaze direction logic (DISABLED FOR DEMO) ===
+            // const gazeDirection = detectGazeDirection(landmarks);
+            // if (gazeDirection !== 'CENTER') {
+            //     if (lastGazeDirection === gazeDirection) {
+            //         if (!gazeDistractStart) gazeDistractStart = Date.now();
+            //         else if (Date.now() - gazeDistractStart > GAZE_DISTRACT_DURATION) {
+            //             updateDriverState('DISTRACTED', (Date.now() - gazeDistractStart) / 1000, {
+            //                 gazeDirection: gazeDirection,
+            //                 faceDetected: true,
+            //                 timestamp: Date.now()
+            //             });
+            //             gazeDistractStart = Date.now(); // сбрасываем для повторного срабатывания
+            //         }
+            //     } else {
+            //         lastGazeDirection = gazeDirection;
+            //         gazeDistractStart = Date.now();
+            //     }
+            // } else {
+            //     lastGazeDirection = 'CENTER';
+            //     gazeDistractStart = null;
+            // }
+    </script>
+</body>
+</html>
