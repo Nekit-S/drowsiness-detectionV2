@@ -164,6 +164,43 @@ public class EventLoggingServiceImpl implements EventLoggingService {
     }
 
     @Override
+    @Transactional
+    public void logLabeledEvent(com.drivermonitoring.dto.LabelEventDTO labelEvent) {
+        if (labelEvent == null || labelEvent.getDriverId() == null || labelEvent.getLabel() == null) {
+            logger.warn("Invalid labeled event: {}", labelEvent);
+            return;
+        }
+        try {
+            // Получаем активную сессию
+            DriverSession session = sessionService.getActiveSession(labelEvent.getDriverId());
+            if (session == null) {
+                logger.warn("Cannot log labeled event: No active session for driver {}", labelEvent.getDriverId());
+                return;
+            }
+            // Сохраняем все признаки и метку в metadata
+            Map<String, Object> metadata = new HashMap<>();
+            metadata.put("features", labelEvent.getFeatures());
+            metadata.put("is_labeled", true);
+            metadata.put("label", labelEvent.getLabel());
+            metadata.put("label_timestamp", labelEvent.getTimestamp());
+            metadata.put("sessionId", labelEvent.getSessionId());
+            // Сохраняем eventType = LABEL, duration = 0
+            String metadataJson = objectMapper.writeValueAsString(metadata);
+            Event event = new Event(
+                session.getSessionId(),
+                labelEvent.getDriverId(),
+                "LABEL", // eventType
+                0f,
+                metadataJson
+            );
+            eventRepository.save(event);
+            logger.info("Labeled event saved for driver {}: label={}, session={}", labelEvent.getDriverId(), labelEvent.getLabel(), session.getSessionId());
+        } catch (Exception e) {
+            logger.error("Error logging labeled event for driver {}: {}", labelEvent.getDriverId(), e.getMessage(), e);
+        }
+    }
+
+    @Override
     public List<Event> getEventsForSession(Long sessionId) {
         if (sessionId == null) {
             logger.warn("Cannot get events: sessionId is null");
