@@ -20,12 +20,16 @@
         }
         .summary-list .list-group-item {
             border: none;
-            padding: 0.5rem 0;
+            padding: 0.3rem 0; 
             font-size: 1.08rem;
         }
         .summary-title {
-            font-size: 1.2rem;
+            font-size: 1.8rem;
             font-weight: 500;
+            padding-top: 0;
+            padding-bottom: 0; 
+            margin-bottom: 0.4rem;
+            margin-top: 0;
         }
     </style>
 </head>
@@ -46,37 +50,71 @@
                     <ul class="list-group summary-list mb-3">
                         <li class="list-group-item">Количество сессий: <b th:text="${sessionCount}">3</b></li>
                         <li class="list-group-item">Средняя длительность сессии: <b th:text="${avgSessionDuration}">3600</b> сек.</li>
-                        <li class="list-group-item">% времени в норме: <b th:text="${normalPercent}">97</b>%</li>
-                        <li class="list-group-item">% времени отвлечён: <b th:text="${distractedPercent}">3</b>%</li>
-                        <li class="list-group-item">% времени сонлив: <b th:text="${drowsyPercent}">0</b>%</li>
-                        <li class="list-group-item">Средний EAR: <b th:text="${avgEar}">0.27</b></li>
+                        <li class="list-group-item">% времени в норме: <b id="normalPercent" th:text="${normalPercent}">97</b>%</li>
+                        <li class="list-group-item">% времени отвлечён: <b id="distractedPercent" th:text="${distractedPercent}">3</b>%</li>
+                        <li class="list-group-item">% времени сонлив: <b id="drowsyPercent" th:text="${drowsyPercent}">0</b>%</li>
+                        <li class="list-group-item d-flex align-items-center">
+                            Средний EAR: <b id="avgEarValue" th:text="${avgEar}">0.27</b>
+                            <!--
+                            <span id="earEyeContainer" style="margin-left:16px;display:inline-block;width:48px;height:32px;vertical-align:middle">
+                                <svg id="earEyeSvg" width="48" height="32" viewBox="0 0 48 32">
+                                    <ellipse cx="24" cy="16" rx="20" ry="12" fill="#fff" stroke="#333" stroke-width="2"/>
+                                    <path id="upperLidPath" d="" fill="none" stroke="#333" stroke-width="2"/>
+                                    <circle cx="24" cy="16" r="5" fill="#333"/>
+                                </svg>
+                            </span>
+                            -->
+                        </li>
                         <li class="list-group-item">Средняя частота моргания: <b th:text="${avgBlinkRate}">16</b> в мин.</li>
                     </ul>
-                    <div class="mb-2">
-                        <span>Общая оценка: </span>
-                        <span class="text-success">Надёжный</span>
-                    </div>
+                    <div class="mb-3 summary-title">Общая оценка</div>
+                    <ul class="list-group summary-list mb-3">
+                        <li class="list-group-item">
+                            <span th:text="${driverSummary}" th:classappend="${driverSummaryClass}"></span>
+                        </li>
+                        <li class="list-group-item">
+                            <span th:text="${driverRecommendation}" class=""></span>
+                        </li>
+                        <li class="list-group-item">
+                            <span th:utext="${driverComparison}" class=""></span>
+                        </li>
+                    </ul>
                 </div>
                 <div class="col-md-6 d-flex flex-column align-items-center">
                     <div class="mb-2 summary-title">Распределение времени по состояниям</div>
                     <canvas id="pieChart" width="300" height="300"></canvas>
                 </div>
             </div>
-            <!-- Место для будущих графиков или таблиц -->
+            <!-- ВРЕМЕННЫЙ ДИАГНОСТИЧЕСКИЙ ВЫВОД 
+            <div class="alert alert-info" style="font-size:0.95rem;">
+                <b>Диагностика:</b><br>
+                Сессий найдено: <span th:text="${sessionCount}"></span><br>
+                Drowsy bins:
+                <span th:each="val : ${drowsyAvgBins}" th:text="${val} + ' '"></span><br>
+                Distracted bins:
+                <span th:each="val : ${distractedAvgBins}" th:text="${val} + ' '"></span><br>
+            </div>
+             Место для будущих графиков или таблиц 
+            <div class="mt-4">
+                <div class="summary-title" style="font-size:1.1rem;">Динамика отвлечённости и сонливости по ходу сессии</div>
+                <div class="w-100 d-flex justify-content-center">
+                    <canvas id="sessionTrendsChart" style="max-width: 100%; width: 100%; min-width: 400px; height: 260px;"></canvas>
+                </div>
+            </div>-->
         </div>
     </div>
 </div>
 <script>
-    // Pie Chart для распределения времени по состояниям (использует реальные переменные, если есть)
-    let drowsyPercent = parseFloat(document.querySelector('[th\\:text="${drowsyPercent}"]')?.textContent) || 0;
-    let distractedPercent = parseFloat(document.querySelector('[th\\:text="${distractedPercent}"]')?.textContent) || 0;
-    let normalPercent = parseFloat(document.querySelector('[th\\:text="${normalPercent}"]')?.textContent) || 100;
+    // Pie Chart для распределения времени по состояниям (использует реальные значения из DOM)
+    let drowsyPercent = parseFloat(document.getElementById('drowsyPercent')?.textContent) || 0;
+    let distractedPercent = parseFloat(document.getElementById('distractedPercent')?.textContent) || 0;
+    let normalPercent = parseFloat(document.getElementById('normalPercent')?.textContent) || 100;
     if (document.getElementById('pieChart')) {
         const pieCtx = document.getElementById('pieChart').getContext('2d');
         new Chart(pieCtx, {
             type: 'pie',
             data: {
-                labels: ['Всё нормально', 'Часто отвлекается', 'Сонливость'],
+                labels: ['Всё нормально', 'Отвлекается', 'Сонлив'],
                 datasets: [{
                     data: [normalPercent, distractedPercent, drowsyPercent],
                     backgroundColor: ['#28a745', '#ffc107', '#dc3545'],
@@ -86,6 +124,110 @@
                 responsive: false,
                 plugins: {
                     legend: { position: 'bottom' }
+                }
+            }
+        });
+    }
+
+    // EAR-глаз визуализация (реалистичное веко с заливкой)
+    function updateEarEye(ear) {
+        let minEAR = 0.09, midEAR = 0.18, maxEAR = 0.3;
+        let maxRy = 12;
+        let cx = 24, cy = 16, rx = 20;
+        let clamped = Math.max(minEAR, Math.min(maxEAR, ear));
+        let upperLidPath = document.getElementById('upperLidPath');
+        let d = '';
+        if (clamped > midEAR) {
+            // Открытый глаз: дуга эллипса
+            let ry = maxRy * (clamped - minEAR) / (maxEAR - minEAR);
+            let x1 = cx - rx, x2 = cx + rx;
+            let y1 = cy - ry;
+            d = `M ${x1} ${y1} A ${rx} ${ry} 0 0 1 ${x2} ${y1} L ${x2} 0 L ${x1} 0 Z`;
+            if (upperLidPath) {
+                upperLidPath.setAttribute('d', d);
+                upperLidPath.setAttribute('fill', '#fff');
+            }
+        } else {
+            // Закрытый глаз: залитый прямоугольник сверху
+            let maxClose = 8;
+            let closeFrac = (midEAR - clamped) / (midEAR - minEAR);
+            let y = cy + maxClose * closeFrac;
+            let x1 = cx - rx, x2 = cx + rx;
+            d = `M ${x1} 0 L ${x2} 0 L ${x2} ${y} L ${x1} ${y} Z`;
+            if (upperLidPath) {
+                upperLidPath.setAttribute('d', d);
+                upperLidPath.setAttribute('fill', '#fff');
+            }
+        }
+        if (upperLidPath) {
+            upperLidPath.setAttribute('stroke', '#333');
+        }
+    }
+    let avgEar = parseFloat(document.getElementById('avgEarValue')?.textContent) || 0.3;
+    updateEarEye(avgEar);
+
+    // --- График динамики по сессии ---
+    // Преобразуем Thymeleaf массивы в JS (если не массив — парсим строку)
+    let drowsyAvgBins = /*[[${drowsyAvgBins}]]*/ [];
+    let distractedAvgBins = /*[[${distractedAvgBins}]]*/ [];
+    let binsCount = /*[[${binsCount}]]*/ 20;
+    if (!Array.isArray(drowsyAvgBins)) drowsyAvgBins = JSON.parse('[' + drowsyAvgBins + ']');
+    if (!Array.isArray(distractedAvgBins)) distractedAvgBins = JSON.parse('[' + distractedAvgBins + ']');
+    const labels = Array.from({length: binsCount}, (_, i) => Math.round((i+1)*100/binsCount) + '%');
+    if (document.getElementById('sessionTrendsChart')) {
+        const ctx = document.getElementById('sessionTrendsChart').getContext('2d');
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Сонливость',
+                        data: drowsyAvgBins,
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220,53,69,0.1)',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    },
+                    {
+                        label: 'Отвлечённость',
+                        data: distractedAvgBins,
+                        borderColor: '#ffc107',
+                        backgroundColor: 'rgba(255,193,7,0.1)',
+                        fill: false,
+                        tension: 0.3,
+                        pointRadius: 3,
+                        pointHoverRadius: 6
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + Math.round(context.parsed.y * 100) + '%';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        ticks: {
+                            callback: function(value) { return Math.round(value*100) + '%'; }
+                        },
+                        title: { display: true, text: 'Доля времени' }
+                    },
+                    x: {
+                        title: { display: true, text: 'Прогресс сессии' }
+                    }
                 }
             }
         });
